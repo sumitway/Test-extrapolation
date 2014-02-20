@@ -1,0 +1,202 @@
+<workflow-app xmlns="uri:oozie:workflow:0.2" name="extrapolation">
+    <start to="extrpl-counts"/>
+
+    <action name="extrpl-counts">
+        <java>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <main-class>org.apache.hadoop.streaming.HadoopStreaming</main-class>
+            <arg>-D</arg>
+            <arg>mapred.reduce.tasks=${reduceTasks}</arg>
+            <arg>-mapper</arg>
+            <arg>market.insight_1.0/market.insight/inst/scripts/mapper_subscriber_postal_sector_counts.R</arg>
+            <arg>-reducer</arg>
+            <arg>aggregate</arg>
+            <arg>-combiner</arg>
+            <arg>aggregate</arg>
+            <arg>-input</arg>
+            <arg>${activeSubscriberPath}</arg>
+            <arg>-output</arg>
+            <arg>${nameNode}/tmp/intermediate/${wf:id()}/extrpl-counts</arg>
+            <arg>-cacheFile</arg>
+            <arg>${referenceDataRoot}/column_names.csv#column_names.csv</arg>
+            <arg>-cacheArchive</arg>
+            <arg>${wf:appPath()}/${marketInsightPath}#market.insight_1.0</arg>
+
+        </java>
+        <ok to="extrpl-prepare"/>
+        <error to="fail"/>
+    </action>
+
+    <action name="extrpl-prepare">
+        <java>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <main-class>com.gfk.livepop.mapred.scriptrunner.ScriptRunner</main-class>
+            <arg>-a</arg>
+            <arg>${wf:appPath()}/${marketInsightPath}#market.insight_1.0</arg>
+            <arg>-f</arg>
+            <arg>${referenceDataRoot}/targets.csv</arg>
+            <arg>-f</arg>
+            <arg>${referenceDataRoot}/invcosts.csv</arg>
+            <arg>-f</arg>
+            <arg>${referenceDataRoot}/distance.csv</arg>
+            <arg>-f</arg>
+            <arg>${referenceDataRoot}/parameters.csv</arg>
+            <arg>-f</arg>
+            <arg>${referenceDataRoot}/identification.csv</arg>
+            <arg>-m</arg>
+            <arg>${nameNode}/tmp/intermediate/${wf:id()}/extrpl-counts#counts.csv</arg>
+            <arg>-o</arg>
+            <arg>${nameNode}/tmp/intermediate/${wf:id()}/extrpl-prepare</arg>
+            <arg>-s</arg>
+            <arg>market.insight_1.0/market.insight/inst/scripts/prepare_postal_sector_size.R</arg>
+        </java>
+        <ok to="extrpl-weights"/>
+        <error to="fail"/>
+    </action>
+
+    <action name="extrpl-weights">
+        <java>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <main-class>org.apache.hadoop.streaming.HadoopStreaming</main-class>
+            <arg>-D</arg>
+            <arg>mapred.reduce.tasks=${reduceTasks}</arg>
+            <arg>-D</arg>
+            <arg>mapred.textoutputformat.separator=|</arg>
+            <arg>-D</arg>
+            <arg>stream.reduce.output.field.separator=|</arg>
+            <arg>-mapper</arg>
+            <arg>market.insight_1.0/market.insight/inst/scripts/mapper.R</arg>
+            <arg>-reducer</arg>
+            <arg>market.insight_1.0/market.insight/inst/scripts/reducer.R</arg>
+            <arg>-outputformat</arg>
+            <arg>com.gfk.livepop.mapred.streaming.MultipleTextFiles</arg>
+            <arg>-input</arg>
+            <arg>${activeSubscriberPath}</arg>
+            <arg>-output</arg>
+            <arg>${subscriberWeightsPath}</arg>
+            <arg>-cacheFile</arg>
+            <arg>${nameNode}/tmp/intermediate/${wf:id()}/extrpl-prepare/merged_targets.csv#merged_targets.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${nameNode}/tmp/intermediate/${wf:id()}/extrpl-prepare/merged_invcosts.csv#merged_invcosts.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${nameNode}/tmp/intermediate/${wf:id()}/extrpl-prepare/merged_postal_sectors.csv#merged_postal_sectors.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${nameNode}/tmp/intermediate/${wf:id()}/extrpl-prepare/split_postal_sectors.csv#split_postal_sectors.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${referenceDataRoot}/impute.csv#impute.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${referenceDataRoot}/parameters.csv#parameters.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${referenceDataRoot}/attributes.csv#attributes.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${referenceDataRoot}/preptargets.csv#preptargets.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${referenceDataRoot}/identification.csv#identification.csv</arg>
+            <arg>-cacheFile</arg>
+            <arg>${referenceDataRoot}/column_names.csv#column_names.csv</arg>
+            <arg>-cacheArchive</arg>
+            <arg>${wf:appPath()}/${marketInsightPath}#market.insight_1.0</arg>
+        </java>
+        <ok to="default-weights"/>
+        <error to="fail"/>
+    </action>
+
+    <action name="default-weights">
+        <java>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <main-class>com.gfk.livepop.mapred.defaultweight.MRJob</main-class>
+            <arg>-D</arg>
+            <arg>mapred.reduce.tasks=${reduceTasks}</arg>
+            <arg>${subscriberWeightsPath}/data</arg>
+            <arg>${nameNode}/tmp/intermediate/${wf:id()}/extrpl-defaultweight-mr</arg>
+            <arg>${subscriberWeightsPath}/default</arg>
+        </java>
+        <ok to="extrpl-active-subs-metrics"/>
+        <error to="fail"/>
+    </action>
+
+    <action name="extrpl-active-subs-metrics">
+        <java>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <main-class>org.apache.hadoop.streaming.HadoopStreaming</main-class>
+            <arg>-D</arg>
+            <arg>mapred.reduce.tasks=${reduceTasks}</arg>
+            <arg>-mapper</arg>
+            <arg>market.insight_1.0/market.insight/inst/scripts/mapper_generate_subscriber_metrics.R</arg>
+            <arg>-reducer</arg>
+            <arg>aggregate</arg>
+            <arg>-combiner</arg>
+            <arg>aggregate</arg>
+            <arg>-input</arg>
+            <arg>${activeSubscriberPath}</arg>
+            <arg>-output</arg>
+            <arg>${metricsPath}/POI_metrics</arg>
+            <arg>-cacheFile</arg>
+            <arg>${referenceDataRoot}/column_names.csv#column_names.csv</arg>
+            <arg>-cacheArchive</arg>
+            <arg>${wf:appPath()}/${marketInsightPath}#market.insight_1.0</arg>
+
+        </java>
+        <ok to="extrpl-metrics"/>
+        <error to="fail"/>
+    </action>
+
+
+    <action name="extrpl-metrics">
+        <java>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <main-class>com.gfk.livepop.mapred.scriptrunner.ScriptRunner</main-class>
+            <arg>-a</arg>
+            <arg>${wf:appPath()}/${marketInsightPath}#market.insight_1.0</arg>
+            <arg>-f</arg>
+            <arg>${referenceDataRoot}/parameters.csv</arg>
+            <arg>-m</arg>
+            <arg>${metricsPath}/POI_metrics#POI_metrics.csv</arg>
+            <arg>-m</arg>
+            <arg>${subscriberWeightsPath}/kpi#extrpl_kpi.csv</arg>
+            <arg>-m</arg>
+            <arg>${subscriberWeightsPath}/imp_cat#imp_cat.csv</arg>
+            <arg>-o</arg>
+            <arg>${metricsPath}</arg>
+            <arg>-s</arg>
+            <arg>market.insight_1.0/market.insight/inst/scripts/generate_metrics.R</arg>
+        </java>
+        <ok to="end"/>
+        <error to="fail"/>
+    </action>
+
+    <kill name="fail">
+        <message>Map/Reduce failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+    <end name="end"/>
+</workflow-app>
